@@ -48,7 +48,6 @@ typedef struct _cc_SSL {
     }
 #endif
 */
-
 #endif
 _CC_API_PUBLIC(bool_t) _SSL_setup(_cc_OpenSSL_t *ssl,
                                 const tchar_t *cert_file,

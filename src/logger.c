@@ -12,15 +12,15 @@
 
 struct logger_entryA {
     uint8_t level;
-    time_t timestamp;
     int32_t length;
+    time_t timestamp;
     char message[_LOGGER_MESSAGE_LIMIT_];
 };
 
 struct logger_entryW {
     uint8_t level;
-    time_t timestamp;
     int32_t length;
+    time_t timestamp;
     wchar_t message[_LOGGER_MESSAGE_LIMIT_];
 };
 

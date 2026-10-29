@@ -2,7 +2,7 @@
 #include <libcc/rbtree.h>
 #include <libcc/string.h>
 #include <libcc/atomic.h>
-#include <libcc/OpenSSL.h>
+#include <libcc/SSL.h>
 #include <libcc/socket.h>
 
 #ifdef _CC_USE_OPENSSL_
@@ -37,8 +37,7 @@ _CC_API_PRIVATE(void) _SSL_clear_error() {
 _CC_API_PRIVATE(bool_t) _SSL_only_init(void) {
 #if (OPENSSL_INIT_LOAD_CONFIG && !defined LIBRESSL_VERSION_NUMBER)
     uint64_t opts = OPENSSL_INIT_LOAD_CONFIG;
-    OPENSSL_INIT_SETTINGS  *init;
-    init = OPENSSL_INIT_new();
+    OPENSSL_INIT_SETTINGS  *init = OPENSSL_INIT_new();
     if (init == NULL) {
         _SSL_error("OPENSSL_INIT_new");
         return false;

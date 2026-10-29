@@ -244,28 +244,18 @@ _CC_API_PRIVATE(const tchar_t*) code_as_string(const int32_t err_code) {
 _CC_API_PRIVATE(_cc_sql_t*) _sqlite_connect(const tchar_t *sql_connection_string) {
     sqlite3 *sql = NULL;
     _cc_sql_t *ctx = NULL;
-    bool_t use_WAL = false;
-    _cc_url_t params;
+    _cc_url_t u;
 
-    if (!_cc_parse_url(&params, sql_connection_string)) {
+    if (!_cc_parse_url(&u, sql_connection_string)) {
         return NULL;
     }
 
-    if (_sqlite3_open(params.path + 1, &sql) != SQLITE_OK) {
-        _cc_logger_error("Can't open database: %s, %s", params.path + 1, _sqlite3_errmsg(sql));
-        _cc_free_url(&params);
+    if (_sqlite3_open(u.path + 1, &sql) != SQLITE_OK) {
+        _cc_logger_error("Can't open database: %s, %s", u.path + 1, _sqlite3_errmsg(sql));
+        _cc_free_url(&u);
         return NULL;
     }
 
-    if (params.query) {
-        const tchar_t *r;
-        r = _tcsstr(params.query, _T("WAL="));
-        if (r && _tcsnicmp(r + 5, _T("true"), 4) == 0) {
-            use_WAL = true;
-        }
-    }
-
-    _cc_free_url(&params);
     ctx = (_cc_sql_t *)_cc_malloc(sizeof(_cc_sql_t));
     ctx->sql = sql;
     ctx->transaction = false;
@@ -277,11 +267,17 @@ _CC_API_PRIVATE(_cc_sql_t*) _sqlite_connect(const tchar_t *sql_connection_string
 
     sqlite3_exec(ctx->sql, "PRAGMA secure_delete = ON", 0, 0, 0);
     sqlite3_exec(ctx->sql, "PRAGMA temp_store = MEMORY", 0, 0, 0);
-    if (use_WAL) {
-        sqlite3_exec(ctx->sql, "PRAGMA journal_mode = WAL", 0, 0, 0);
-        sqlite3_exec(ctx->sql, "PRAGMA journal_size_limit = 10485760", 0, 0, 0);
-    }
 
+    if (u.query) {
+        const tchar_t *r;
+        r = _tcsstr(u.query, _T("WAL="));
+        if (r && _tcsnicmp(r + 4, _T("true"), 4) == 0) {
+            sqlite3_exec(ctx->sql, "PRAGMA journal_mode = WAL", 0, 0, 0);
+            sqlite3_exec(ctx->sql, "PRAGMA journal_size_limit = 10485760", 0, 0, 0);
+        }
+    }
+    
+    _cc_free_url(&u);
     return ctx;
 }
 

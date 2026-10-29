@@ -1,7 +1,7 @@
 #ifndef _C_CC_EVENT_H_INCLUDED_
 #define _C_CC_EVENT_H_INCLUDED_
 
-#include "OpenSSL.h"
+#include "SSL.h"
 #include "array.h"
 #include "atomic.h"
 

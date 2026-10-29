@@ -156,7 +156,7 @@ LIBCCHeaders = [
 	"include/libcc/xml.h",
 	"include/libcc/dns.h",
 	"include/libcc/smtp.h",
-	"include/libcc/OpenSSL.h",
+	"include/libcc/SSL.h",
 	"include/libcc/gzip.h",
 	"include/libcc/http_request.h",
 	"include/TOTP.h",
