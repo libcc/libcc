@@ -11,14 +11,14 @@
 #define _LOGGER_MESSAGE_LIMIT_  (2048)
 
 struct logger_entryA {
-    uint8_t level;
+    volatile uint8_t level;
     int32_t length;
     time_t timestamp;
     char message[_LOGGER_MESSAGE_LIMIT_];
 };
 
 struct logger_entryW {
-    uint8_t level;
+    volatile uint8_t level;
     int32_t length;
     time_t timestamp;
     wchar_t message[_LOGGER_MESSAGE_LIMIT_];
@@ -40,6 +40,7 @@ static struct {
 
 static _cc_thread_t *logger_thread = NULL;
 static bool_t logger_running = false;
+static volatile uint64_t logger_loss_counter = 0;
 
 static const char *SYSLOG_LEVEL_COLORS[_CC_LOG_LEVEL_DEBUG_ + 1] = {
     //EMERG,    ALERT,      CRIT,       ERR,        WARNING,    NOTICE,     INFO,       DEBUG
@@ -134,7 +135,10 @@ _CC_API_PUBLIC(void) _cc_loggerA(const char_t *file, int line, uint8_t level, co
 
     _cc_mutex_lock(ringA.lock);
     log = &ringA.buffers[ringA.w];
-    log->level = 0xff;
+    if (log->level != 0xff) {
+        logger_loss_counter++;
+        log->level = 0xff;
+    }
     ringA.w = (ringA.w + 1) & _LOGGER_BUFFER_LIMIT_MASK_;
     if (ringA.w == ringA.r) {
         ringA.r = (ringA.r + 1) & _LOGGER_BUFFER_LIMIT_MASK_;
@@ -173,7 +177,10 @@ _CC_API_PUBLIC(void) _cc_loggerW(const wchar_t *file, int line, uint8_t level, c
 
     _cc_mutex_lock(ringW.lock);
     log = &ringW.buffers[ringW.w];
-    log->level = 0xff;
+    if (log->level != 0xff) {
+        logger_loss_counter++;
+        log->level = 0xff;
+    }
     ringW.w = (ringW.w + 1) & _LOGGER_BUFFER_LIMIT_MASK_;
     if (ringW.w == ringW.r) {
         ringW.r = (ringW.r + 1) & _LOGGER_BUFFER_LIMIT_MASK_;
