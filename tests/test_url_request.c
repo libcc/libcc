@@ -2,6 +2,7 @@
 #include <libcc/json.h>
 #include <libcc/timeout.h>
 
+static int quit = 0;
 static _cc_OpenSSL_t *openSSL = NULL;
 static bool_t url_request(const tchar_t *url, pvoid_t args);
 static bool_t url_request_connect(_cc_http_request_t *request);
@@ -9,7 +10,7 @@ static bool_t url_request_connect(_cc_http_request_t *request);
 const tchar_t *_user_agent[6] = {
     _T("Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 Edg/138.0.0.0"),
     _T("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15"),
-    _T("Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"),
+    _T("Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/604.1"),
     _T("Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Mobile Safari/537.36 Edg/138.0.0.0"),
     _T("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"),
     _T("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36")
@@ -48,8 +49,7 @@ static bool_t url_request_header(_cc_http_request_t *request, _cc_event_t *e) {
     }
     //
     _cc_buf_puts(buf, _T("Connection: Keep-Alive\r\nAccept-Encoding: gzip\r\nContent-Type: application/json\r\n"));
-    _cc_buf_appendf(buf, _T("User-Agent: %s\r\nAccept: */*\r\n\r\n"),
-                   _user_agent[rand() % _cc_countof(_user_agent)]);
+    _cc_buf_appendf(buf, _T("User-Agent: %s\r\nAccept: */*\r\n\r\n"), _user_agent[rand() % _cc_countof(_user_agent)]);
 #if __POST__
     _cc_buf_append(buf, raw, raw_length);
 #endif
@@ -62,17 +62,17 @@ static bool_t url_request_success(_cc_http_request_t *request) {
 
     _cc_rbtree_for(node, &response->headers) {
         _cc_http_header_t *header = _cc_upcast(node, _cc_http_header_t, lnk);
-        printf("header:%s=%s", header->keyword, header->value);
+        printf("header:%s=%s\n", header->keyword, header->value);
     }
 
     switch (response->status) {
     case _CC_HTTP_STATUS_OK_:{
         _cc_json_t *root = _cc_json_parse((tchar_t*)request->buffer.bytes, request->buffer.length);
         if (root) {
-            printf("url_request success,%s", request->url.host);
+            printf("url_request success,%s\n", request->url.host);
             _cc_free_json(root);
         } else {
-            printf("json parse fail,%s\n\n", _cc_json_error());
+            printf("json parse fail,%s\n", _cc_json_error());
         }
         _cc_buf_cleanup(&request->buffer);
     }
@@ -89,7 +89,7 @@ static bool_t url_request_success(_cc_http_request_t *request) {
     }
     }
 
-    printf("url_request fail,%s\n\n", request->url.host);
+    printf("url_request fail,%s\n", request->url.host);
     return true;
 }
 
@@ -106,7 +106,7 @@ static bool_t _url_timeout_callback(_cc_async_event_t *timer, _cc_event_t *e, co
     if (which == _CC_EVENT_CLOSED_) {
         return false;
     }
-    printf("url-timout reset connect,%d",e->ident);
+    printf("url-timout reset connect,%d\n",(int)(e->ident & 0xFFFF));
     return (url_request_connect(request))?false:true;
 }
 
@@ -116,6 +116,7 @@ static bool_t _handshaking(_cc_event_t *e, _cc_http_request_t *request) {
     }
     if (request->io->ssl->is_handshaked) {
         e->timeout = 60000;
+        printf("url_request connected,%s\n", request->url.host);
         _CC_SET_BIT(_CC_EVENT_READABLE_, e->flags);
         return url_request_header(request, e);
     }
@@ -128,8 +129,8 @@ static bool_t _http_request_callback(_cc_async_event_t *async, _cc_event_t *e, c
 
     if (_CC_ISSET_BIT(_CC_EVENT_CLOSED_, which)) {
         //printf("disconnect\n");
-        printf("_cc_http_request_ _CC_EVENT_CLOSED_ %d",e->ident);
-        if (_cc_async_event_is_running()) {
+        printf("_cc_http_request_ _CC_EVENT_CLOSED_ %d\n",(int)(e->ident & 0xFFFF));
+        if (quit == 0) {
             _cc_add_event_timeout(_cc_get_async_event(), 10000, _url_timeout_callback, (uintptr_t)request);
         } else {
             _cc_free_http_request(request);
@@ -146,10 +147,10 @@ static bool_t _http_request_callback(_cc_async_event_t *async, _cc_event_t *e, c
         }
         return false;
     } else if (_CC_ISSET_BIT(_CC_EVENT_CONNECT_, which)) {
-        printf("url_request connected,%s", request->url.host);
         if (request->url.scheme.ident == _CC_SCHEME_HTTPS_) {
             return _handshaking(e, request);
         }
+        printf("url_request connected,%s\n", request->url.host);
         _CC_SET_BIT(_CC_EVENT_READABLE_, e->flags);
         return url_request_header(request, e);
     }
@@ -162,6 +163,7 @@ static bool_t _http_request_callback(_cc_async_event_t *async, _cc_event_t *e, c
     if (_CC_ISSET_BIT(_CC_EVENT_READABLE_, which)) {
         int32_t off = _cc_io_buffer_read(e, request->io);
         if (off < 0) {
+            quit = 1;
             return false;
         } else if (off == 0) {
             return true;
@@ -208,7 +210,7 @@ static bool_t url_request_connect(_cc_http_request_t *request) {
     /*Open then socket*/
     fd = _cc_socket(AF_INET, _CC_SOCK_NONBLOCK_ | _CC_SOCK_CLOEXEC_ | SOCK_STREAM, 0);
     if (fd == -1) {
-        printf("socket fail:%s.", _cc_last_error(_cc_last_errno()));
+        printf("socket fail:%s.\n", _cc_last_error(_cc_last_errno()));
         return false;
     }
 
@@ -261,16 +263,20 @@ static bool_t url_request(const tchar_t *url, pvoid_t args) {
 
     if (!url_request_connect(request)) {
         _cc_free_http_request(request);
+        quit = 1;
         return false;
     }
     return true;
 }
 
 int main(int argc, char *const argv[]) {
+    _cc_async_event_t async;
     openSSL = _SSL_init(_CC_SSL_DEFAULT_PROTOCOLS_);
 
-    _cc_alloc_async_event(0, NULL);
-    _cc_logger_dump();
+    if (_cc_register_poller(&async) == false) {
+        printf("Failed to register select.\n");
+        return -1;
+    }
 
     url_request("https://api.trongrid.io/wallet/getnowblock", NULL);
     //url_request("https://api.trongrid.io/wallet/getnowblock", NULL);
@@ -278,10 +284,11 @@ int main(int argc, char *const argv[]) {
     //url_request("https://api.trongrid.io/wallet/getnowblock", NULL);
     //url_request("https://api.trongrid.io/wallet/getnowblock", NULL);
 
-    while (getchar() != 'q') {
-        _cc_sleep(100);
+    while (quit == 0) {
+        async.wait(&async, 100);
     }
-    _cc_free_async_event();
+
+    async.free(&async);
     _SSL_quit(openSSL);
     return 0;
 }
