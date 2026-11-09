@@ -5,9 +5,11 @@
 struct _fd_list {
     fd_set wfds;
     fd_set rfds;
+    fd_set efds;
 
     int32_t rc;
     int32_t wc;
+    int32_t ec;
 #ifndef _CC_WINDOWS
     _cc_socket_t max_fd;
 #endif
@@ -107,10 +109,15 @@ _CC_API_PRIVATE(bool_t) _set_fd_event(_cc_event_t *e, struct _fd_list *fds) {
     if (_CC_EVENT_IS_SOCKET(e->flags) == 0) {
         return false;
     }
+
+
     if (_CC_ISSET_BIT(_CC_EVENT_CONNECT_, e->flags)) {
         FD_SET(e->fd, &fds->wfds);
         fds->wc++;
         e->filter |= _CC_EVENT_WRITABLE_;
+
+        FD_SET(e->fd, &fds->efds);
+        fds->ec++;
     } else {
         if (_CC_ISSET_BIT(_CC_EVENT_WRITABLE_, e->flags)) {
             FD_SET(e->fd, &fds->wfds);
@@ -150,11 +157,12 @@ _CC_API_PRIVATE(bool_t) _select_event_wait(_cc_async_event_t *async, uint32_t ti
         goto WHEEL_TIMER;
     }
 
-    fds.wc = fds.rc = 0;
+    fds.wc = fds.rc = fds.ec = 0;
     fds.max_fd = _CC_INVALID_SOCKET_;
 
     FD_ZERO(&fds.rfds);
     FD_ZERO(&fds.wfds);
+    FD_ZERO(&fds.efds);
 
     for (i = 0; i < priv->nfds; i++) {
         _cc_event_t *e = priv->list[i];
@@ -167,24 +175,38 @@ _CC_API_PRIVATE(bool_t) _select_event_wait(_cc_async_event_t *async, uint32_t ti
 
     /**/
 #ifndef __CC_WINDOWS__
-    ready = select((int)fds.max_fd + 1, &fds.rfds, &fds.wfds, NULL, &tv);
+    ready = select((int)fds.max_fd + 1, &fds.rfds, &fds.wfds, &fds.efds, &tv);
 #else
     ready = select(0, &fds.rfds, &fds.wfds, NULL, &tv);
 #endif
     if (_cc_likely(ready)) {
         for (i = 0; i < priv->nfds && ready; i++) {
             _cc_event_t* e = priv->list[i];
+            uint32_t what;
             uint32_t which = 0;
-            uint32_t what = _CC_ISSET_BIT(_CC_EVENT_ACCEPT_ | _CC_EVENT_READABLE_, e->flags);
-            if (what && FD_ISSET(e->fd, &fds.rfds)) {
-                which |= what;
-            }
 
-            what = _CC_ISSET_BIT(_CC_EVENT_CONNECT_ | _CC_EVENT_WRITABLE_, e->flags);
-            if (what && FD_ISSET(e->fd, &fds.wfds)) {
-                which |= what;
-                if (which & _CC_EVENT_CONNECT_) {
+            if (_CC_ISSET_BIT(_CC_EVENT_CONNECT_, e->flags) && FD_ISSET(e->fd, &fds.efds)) {
+                if (!_valid_fd(e->fd)) {
+                    which = _CC_EVENT_CLOSED_;
+                }
+            } 
+            
+            if (which == 0) {
+                what = _CC_ISSET_BIT(_CC_EVENT_ACCEPT_ | _CC_EVENT_READABLE_, e->flags);
+                if (what && FD_ISSET(e->fd, &fds.rfds)) {
+                    which |= what;
+                }
 
+                what = _CC_ISSET_BIT(_CC_EVENT_CONNECT_ | _CC_EVENT_WRITABLE_, e->flags);
+                if (what && FD_ISSET(e->fd, &fds.wfds)) {
+                    which |= what;
+                    if (which & _CC_EVENT_CONNECT_) {
+                        if (_valid_fd(e->fd)) {
+                            _CC_UNSET_BIT(_CC_EVENT_CONNECT_, e->flags);
+                        } else {
+                            which = _CC_EVENT_CLOSED_;
+                        }
+                    }
                 }
             }
 
