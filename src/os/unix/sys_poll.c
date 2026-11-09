@@ -79,7 +79,7 @@ _CC_API_PRIVATE(bool_t) _set_fd_event(_cc_event_t *e, struct pollfd *p) {
     if (_CC_ISSET_BIT(_CC_EVENT_PENDING_, e->flags)) {
         return false;
     }
-    p->events = POLLERR;
+    p->events = 0;
     if (_CC_ISSET_BIT(_CC_EVENT_CONNECT_, e->flags)) {
         p->events |= POLLOUT;
     } else {
@@ -91,7 +91,7 @@ _CC_API_PRIVATE(bool_t) _set_fd_event(_cc_event_t *e, struct pollfd *p) {
         }
     }
 
-    if (p->events != POLLERR) {
+    if (p->events != 0) {
         p->fd = e->fd;
         p->revents = 0;
         return true;
@@ -150,7 +150,7 @@ _CC_API_PRIVATE(bool_t) _poll_event_wait(_cc_async_event_t *async, uint32_t time
         for (i = 0; i < nfds && ready; i++) {
             e = priv->fds[i];
             which = 0;
-            what = fds[i].events;
+            what = fds[i].revents;
             if (what & POLLNVAL) {
                 _cc_logger_warin("poll() error fd:%d ev:%04Xd rev:%04Xd", e->fd, e->flags, what);
             }
@@ -159,20 +159,25 @@ _CC_API_PRIVATE(bool_t) _poll_event_wait(_cc_async_event_t *async, uint32_t time
                 _cc_logger_warin("strange poll() events fd:%d ev:%04Xd rev:%04Xd", e->fd, e->flags, what);
             }
 
-            if (what & POLLIN) {
-                which |= _CC_ISSET_BIT(_CC_EVENT_ACCEPT_ | _CC_EVENT_READABLE_, e->flags);
-            }
+            if (what & POLLERR || what & POLLHUP || what & POLLNVAL) {
+                which = _CC_EVENT_CLOSED_;
+            } else {
+                if (what & POLLIN) {
+                    which |= _CC_ISSET_BIT(_CC_EVENT_ACCEPT_ | _CC_EVENT_READABLE_, e->flags);
+                }
 
-            if (what & POLLOUT) {
-                which |= _CC_ISSET_BIT(_CC_EVENT_CONNECT_ | _CC_EVENT_WRITABLE_, e->flags);
-                if (which & _CC_EVENT_CONNECT_) {
-                    if (_valid_fd(e->fd)) {
-                        _CC_UNSET_BIT(_CC_EVENT_CONNECT_, e->flags);
-                    } else {
-                        which = _CC_EVENT_CLOSED_;
+                if (what & POLLOUT) {
+                    which |= _CC_ISSET_BIT(_CC_EVENT_CONNECT_ | _CC_EVENT_WRITABLE_, e->flags);
+                    if (which & _CC_EVENT_CONNECT_) {
+                        if (_valid_fd(e->fd)) {
+                            _CC_UNSET_BIT(_CC_EVENT_CONNECT_, e->flags);
+                        } else {
+                            which = _CC_EVENT_CLOSED_;
+                        }
                     }
                 }
             }
+
 
             if (which) {
                 ready--;
