@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <locale.h>
 #include <libcc/event.h>
-
+static int quit = 0;
 //A simple example program which connects to a server
 
 static bool_t _do_event_handler(_cc_async_event_t *async, _cc_event_t *e, const uint32_t which) {
@@ -10,6 +10,7 @@ static bool_t _do_event_handler(_cc_async_event_t *async, _cc_event_t *e, const 
         return true;
     } else if (which & _CC_EVENT_CLOSED_) {
         printf("closed event %d.\n", (int)(e->ident & 0xFFFF));
+        quit = 1;
         return false;
     } else if (which & _CC_EVENT_READABLE_) {
         printf("readable event %d.\n", (int)(e->ident & 0xFFFF));
@@ -23,7 +24,7 @@ static bool_t _do_event_handler(_cc_async_event_t *async, _cc_event_t *e, const 
             return false;
         }
         buf[off] = 0;
-        printf("%d: %.*s",e->ident, off, buf);
+        printf("%d: %.*s", (int)(e->ident & 0xFFFF), off, buf);
     }
 
     if (which & _CC_EVENT_WRITABLE_) {
@@ -33,6 +34,7 @@ static bool_t _do_event_handler(_cc_async_event_t *async, _cc_event_t *e, const 
 
     if (which & _CC_EVENT_TIMEOUT_) {
         printf("timeout event %d\n", (int)(e->ident & 0xFFFF));
+        quit = 1;
         return false;
     }
 
@@ -58,20 +60,25 @@ bool_t _connect_server(const tchar_t *host, uint16_t port) {
     printf("connect to %s:%d!\n",host,port);
     if (!_cc_tcp_connect(async, event, (_cc_sockaddr_t *)&sa, sizeof(struct sockaddr_in))) {
         _cc_free_event(async, event);
+        quit = 1;
         return false;
     }
     return true;
 }
 
 int main (int argc, char * const argv[]) {
-    int c;
-    _cc_alloc_async_event(0, NULL);
+    _cc_async_event_t async;
+    if (_cc_register_select(&async) == false) {
+        printf("Failed to register select.\n");
+        return -1;
+    }
 
     _connect_server(_T("127.0.0.1"), 5600);
 
-    while((c = getchar()) != 'q') {
-        _cc_sleep(100);
+    while (quit == 0) {
+        async.wait(&async, 100);
     }
-    _cc_free_async_event();
+
+    async.free(&async);
     return 0;
 }
