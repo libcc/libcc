@@ -110,7 +110,6 @@ _CC_API_PRIVATE(bool_t) _set_fd_event(_cc_event_t *e, struct _fd_list *fds) {
         return false;
     }
 
-
     if (_CC_ISSET_BIT(_CC_EVENT_CONNECT_, e->flags)) {
         FD_SET(e->fd, &fds->wfds);
         fds->wc++;
