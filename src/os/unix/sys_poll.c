@@ -178,7 +178,6 @@ _CC_API_PRIVATE(bool_t) _poll_event_wait(_cc_async_event_t *async, uint32_t time
                 }
             }
 
-
             if (which) {
                 ready--;
                 _event_callback(async, e, which);
